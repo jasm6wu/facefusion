@@ -123,3 +123,8 @@
 	font-size: 0.75rem;
 	text-transform: uppercase;
 }
+
+:root:root:root:root .progress-indicator
+{
+	width: 100%;
+}

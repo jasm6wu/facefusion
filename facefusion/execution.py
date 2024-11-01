@@ -98,7 +98,7 @@ def detect_execution_devices() -> List[ExecutionDevice]:
 				'vendor': 'NVIDIA',
 				'name': gpu_element.findtext('product_name').replace('NVIDIA', '').strip()
 			},
-			'video_memory':
+			'memory':
 			{
 				'total': create_value_and_unit(gpu_element.findtext('fb_memory_usage/total')),
 				'free': create_value_and_unit(gpu_element.findtext('fb_memory_usage/free'))
