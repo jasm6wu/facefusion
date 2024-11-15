@@ -30,5 +30,5 @@ def get_execution_device() -> Optional[ExecutionDevice]:
 
 
 def create_video_memory_indicator_html() -> str:
-	video_memory = get_execution_device().get('memory')
+	video_memory = get_execution_device().get('video_memory')
 	return '<progress class="progress-indicator" max="' + str(video_memory.get('total').get('value')) + '" value="' + str(video_memory.get('total').get('value') - video_memory.get('free').get('value')) + '"></progress>'
