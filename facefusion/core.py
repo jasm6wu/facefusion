@@ -6,7 +6,7 @@ from time import time
 
 import numpy
 
-from facefusion import content_analyser, face_classifier, face_detector, face_landmarker, face_masker, face_recognizer, logger, process_manager, state_manager, voice_extractor, wording
+from facefusion import api, content_analyser, face_classifier, face_detector, face_landmarker, face_masker, face_recognizer, logger, process_manager, state_manager, voice_extractor, wording
 from facefusion.args import apply_args, collect_job_args, reduce_job_args, reduce_step_args
 from facefusion.common_helper import get_first
 from facefusion.content_analyser import analyse_image, analyse_video
@@ -61,15 +61,7 @@ def route(args : Args) -> None:
 	if not pre_check():
 		return conditional_exit(2)
 	if state_manager.get_item('command') == 'run':
-		import facefusion.uis.core as ui
-
-		if not common_pre_check() or not processors_pre_check():
-			return conditional_exit(2)
-		for ui_layout in ui.get_ui_layouts_modules(state_manager.get_item('ui_layouts')):
-			if not ui_layout.pre_check():
-				return conditional_exit(2)
-		ui.init()
-		ui.launch()
+		api.run()
 	if state_manager.get_item('command') == 'headless-run':
 		if not job_manager.init_jobs(state_manager.get_item('jobs_path')):
 			hard_exit(1)
