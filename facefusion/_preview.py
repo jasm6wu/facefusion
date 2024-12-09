@@ -1,4 +1,5 @@
-from time import time
+from typing import Optional
+
 import cv2
 import numpy
 
@@ -15,7 +16,7 @@ from facefusion.typing import AudioFrame, Face, FaceSet, VisionFrame
 from facefusion.vision import get_video_frame, read_static_image, read_static_images, resize_frame_resolution
 
 
-def process_frame(frame_number : int = 0) -> None:
+def process_frame(frame_number : int = 0) -> Optional[VisionFrame]:
 	core.conditional_append_reference_faces()
 	reference_faces = get_reference_faces() if 'reference' in state_manager.get_item('face_selector_mode') else None
 	source_frames = read_static_images(state_manager.get_item('source_paths'))
@@ -47,6 +48,8 @@ def process_frame(frame_number : int = 0) -> None:
 		temp_vision_frame = get_video_frame(state_manager.get_item('target_path'), frame_number)
 		preview_vision_frame = process_preview_frame(reference_faces, source_face, source_audio_frame, temp_vision_frame)
 		return preview_vision_frame
+
+	return None
 
 
 def process_preview_frame(reference_faces : FaceSet, source_face : Face, source_audio_frame : AudioFrame, target_vision_frame : VisionFrame) -> VisionFrame:

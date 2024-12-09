@@ -2,6 +2,7 @@ import itertools
 import shutil
 import signal
 import sys
+import webbrowser
 from time import time
 
 import numpy
@@ -61,6 +62,9 @@ def route(args : Args) -> None:
 	if not pre_check():
 		return conditional_exit(2)
 	if state_manager.get_item('command') == 'run':
+		if state_manager.get_item('open_browser'):
+			webbrowser.open('http://127.0.0.1:8000/frontend')
+		logger.info('http://127.0.0.1:8000/frontend', __name__)
 		api.run()
 	if state_manager.get_item('command') == 'headless-run':
 		if not job_manager.init_jobs(state_manager.get_item('jobs_path')):

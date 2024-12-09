@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Demo</title>
+	<style>
+		.preview, meter {
+			width: 100%;
+		}
+		meter { border-radius: 0}
+        img, textarea {
+            width: 100%;
+        }
+        input[type="range"] {
+            width: 100%;
+            margin-top: 1em;
+        }
+	</style>
+</head>
+<body>
+	<div style="display:flex">
+		<div class="preview">
+			<h1>Preview</h1>
+			<div class="image-container">
+				<img id="image" alt="Frame Image">
+			</div>
+			<input type="range" id="slider" value="0">
+			<p>Frame: <span id="frameValue">0</span></p>
+			<button id="playBtn">Play</button>
+    		<button id="stopBtn" disabled>Stop</button>
+			<input type="checkbox" id="useWebSocket" /> Use WebSocket for Preview
+		</div>
+		<div>
+			<h1>Debug</h1>
+			<p>Video Memory <meter id="video_memory" min="0" max="100" value="0"></meter></p>
+			<p>GPU Utilization <meter id="gpu_utilization" min="0" max="100" value="0"></meter></p>
+			<textarea id="debug" rows="1" cols="80" readonly></textarea>
+			<textarea id="devices" rows="4" cols="80" readonly></textarea>
+			<textarea id="state" rows="30" cols="80" readonly></textarea>
+			<textarea id="log" rows="10" cols="80" readonly></textarea>
+			<textarea id="fps" rows="2" cols="80" readonly></textarea>
+		</div>
+	</div>
+ 	<script>
+		function createWebSocketConnection(url, debug, container) {
+			const socket = new WebSocket(url);
+
+			socket.onopen = () => {
+				debug.value = `WebSocket connection established for URL: ${url}`;
+			};
+
+			socket.onmessage = event => {
+				debug.value = `WebSocket Event: ${event.type}`;
+				container.value = event.data;
+			};
+
+			socket.onerror = error => {
+				debug.value = `WebSocket Error: ${error}`;
+			};
+
+			socket.onclose = () => {
+				debug.value = `WebSocket connection closed for URL: ${url} -> Reloading Page`;
+				setTimeout(() => location.reload(), 1000);
+			};
+
+			return socket;
+		}
+
+		devicesSocket = createWebSocketConnection('ws://127.0.0.1:8000/execution/devices', debug, devices);
+		createWebSocketConnection('ws://127.0.0.1:8000/state', debug, state);
+
+		devicesSocket.addEventListener('message', event => {
+			const data = JSON.parse(event.data)[0]
+			const freeMemory = data.video_memory.free.value;
+			const totalMemory = data.video_memory.total.value;
+			const usedMemory = totalMemory - freeMemory;
+			const usedMemoryPercentage = (usedMemory / totalMemory) * 100;
+
+			video_memory.value = usedMemoryPercentage;
+			gpu_utilization.value = data.utilization.gpu.value
+		})
+    </script>
+	<script>
+		const slider = document.getElementById('slider');
+		const image = document.getElementById('image');
+		const frameValue = document.getElementById('frameValue');
+		const playBtn = document.getElementById('playBtn');
+		const stopBtn = document.getElementById('stopBtn');
+		const logTextarea = document.getElementById('log');
+		const useWebSocketCheckbox = document.getElementById('useWebSocket');
+
+		let totalFrames = 0;
+		let currentFrame = 0;
+		let totalFps = 0;
+		let requestCount = 0;
+		let isPlaying = false;
+		let socket;
+
+		// Fetch the total frame count and set up the slider
+		async function fetchSliderTotal() {
+			try {
+				const start = performance.now();
+				const response = await fetch('http://127.0.0.1:8000/ui/preview_slider');
+				const end = performance.now();
+
+				logRequest('GET', 'http://127.0.0.1:8000/ui/preview_slider', start, end);
+
+				if (response.ok) {
+					const data = await response.json();
+					totalFrames = data.video_frame_total;
+					slider.max = totalFrames;
+					slider.value = 0;
+					frameValue.textContent = 0;
+					image.src = `http://127.0.0.1:8000/preview?frame_number=0`;
+				} else {
+					console.error('Failed to fetch total frame count');
+				}
+			} catch (error) {
+				console.error('Error fetching total frame count:', error);
+			}
+		}
+
+		// Function to log request details to the textarea
+		function logRequest(method, url, startTime, endTime) {
+			const duration = (endTime - startTime).toFixed(2);
+			const logMessage = `${method} ${url} | Duration: ${duration}ms\n`;
+
+			// Append to the log textarea
+			logTextarea.value += logMessage;
+			logTextarea.scrollTop = logTextarea.scrollHeight; // Auto scroll to the bottom
+		}
+
+		function logFps(startTime, endTime) {
+			const duration = (endTime - startTime).toFixed(2);
+			const durationInSeconds = duration / 1000;  // Convert ms to seconds
+			const fps = (1 / durationInSeconds).toFixed(2);  // FPS for this request
+
+			// Update total FPS and request count
+			totalFps += parseFloat(fps);
+			requestCount++;
+
+			// Calculate average FPS
+			const averageFps = (totalFps / requestCount).toFixed(2);
+
+			// Update the textarea with id 'fps' to show the average FPS
+			const fpsTextarea = document.getElementById('fps');
+			fpsTextarea.value = `Average FPS: ${averageFps}\n`;
+
+			// Optionally, you can append the current FPS to the textarea as well:
+			fpsTextarea.value += `Current FPS: ${fps}\n`;
+		}
+
+		// Function to update the image based on the slider's value or WebSocket message
+		function updateImage() {
+			const frameNumber = slider.value;
+
+
+			// If WebSocket is enabled, use WebSocket to fetch the image
+			if (useWebSocketCheckbox.checked) {
+				image.onload = null
+				if (!socket) {
+					socket = new WebSocket('ws://127.0.0.1:8000/preview');
+				}
+				const start = performance.now();
+				socket.send(JSON.stringify({ frame_number: frameNumber }));
+				socket.onmessage = function (event) {
+						const end = performance.now();
+						logRequest('WEBSOCKET', 'ws://127.0.0.1:8000/preview', start, end);
+						logFps(start, end)
+
+						// Create a Blob URL from the WebSocket message (assumed to be a Blob)
+						const imageUrl = URL.createObjectURL(event.data);
+
+						// Set the image source to the Blob URL
+						image.src = imageUrl;
+						frameValue.textContent = frameNumber;
+
+						// Continue if playing
+						if (isPlaying && currentFrame < totalFrames) {
+							currentFrame++;
+							slider.value = currentFrame;
+							updateImage(); // Continue to next frame
+						}
+					};
+			} else {
+				socket = null
+				// Use default fetch for the image
+				const start = performance.now();
+				image.src = `http://127.0.0.1:8000/preview?frame_number=${frameNumber}`;
+				image.onload = function () {
+					const end = performance.now();
+					logRequest('GET', image.src, start, end);
+					logFps(start, end)
+					frameValue.textContent = frameNumber;
+
+					// Continue if playing
+					if (isPlaying && currentFrame < totalFrames) {
+						currentFrame++;
+						slider.value = currentFrame;
+						updateImage(); // Continue to next frame
+					}
+				};
+			}
+		}
+
+		// Function to start the play action (without setInterval, only on image load)
+		function startPlay() {
+			playBtn.disabled = true;
+			stopBtn.disabled = false;
+			isPlaying = true;
+			currentFrame = parseInt(slider.value, 10);
+
+			// Start loading the first image
+			updateImage();
+		}
+
+		// Function to stop the play action
+		function stopPlay() {
+			isPlaying = false;
+			playBtn.disabled = false;
+			stopBtn.disabled = true;
+			if (socket) {
+				socket.close(); // Close WebSocket when stopping
+			}
+		}
+
+		// Event listeners for Play/Stop buttons
+		playBtn.addEventListener('click', startPlay);
+		stopBtn.addEventListener('click', stopPlay);
+
+		// Slider manual update
+		slider.addEventListener('change', function () {
+			currentFrame = slider.value;
+			updateImage();
+		});
+
+		// Fetch the total number of frames when the page loads
+		window.onload = fetchSliderTotal;
+	</script>
+</body>
+</html>

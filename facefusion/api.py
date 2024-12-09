@@ -1,13 +1,13 @@
 import asyncio
-import time
-from io import BytesIO
+import json
 from typing import Any, List
 
 import cv2
 import uvicorn
-from litestar import Litestar, WebSocket, get as read, websocket as stream
+from litestar import Litestar, WebSocket, get as read, websocket as stream, websocket_listener
+from litestar.static_files import create_static_files_router
 
-from facefusion import choices, execution, _preview
+from facefusion import _preview, choices, execution, state_manager, vision
 from facefusion.processors import choices as processors_choices
 from facefusion.state_manager import get_state
 from facefusion.typing import ExecutionDevice
@@ -47,7 +47,7 @@ async def read_execution_providers() -> Any:
 
 
 @stream('/execution/devices')
-async def stream_execution_devices(socket : WebSocket) -> None:
+async def stream_execution_devices(socket : WebSocket[Any, Any, Any]) -> None:
 	await socket.accept()
 
 	while True:
@@ -66,7 +66,7 @@ async def read_static_execution_devices() -> List[ExecutionDevice]:
 
 
 @stream('/state')
-async def stream_state(socket : WebSocket) -> None:
+async def stream_state(socket : WebSocket[Any, Any, Any]) -> None:
 	await socket.accept()
 
 	while True:
@@ -74,10 +74,28 @@ async def stream_state(socket : WebSocket) -> None:
 		await asyncio.sleep(0.5)
 
 
-@read('/preview', media_type = 'image/png')
-async def read_preview() -> None:
-	_, preview_vision_frame = cv2.imencode('.png', _preview.process_frame())
+@read('/preview', media_type = 'image/png', mode = "binary")
+async def read_preview(frame_number : int) -> bytes:
+	_, preview_vision_frame = cv2.imencode('.png', _preview.process_frame(frame_number)) #type:ignore
 	return preview_vision_frame.tobytes()
+
+
+@websocket_listener("/preview", send_mode = "binary")
+async def stream_preview(data : str) -> bytes:
+	frame_number = int(json.loads(data).get('frame_number'))
+	_, preview_vision_frame = cv2.imencode('.png', _preview.process_frame(frame_number)) #type:ignore
+	return preview_vision_frame.tobytes()
+
+
+@read('/ui/preview_slider')
+async def read_ui_preview_slider() -> Any:
+	target_path = state_manager.get_item('target_path')
+	video_frame_total = vision.count_video_frame_total(target_path)
+
+	return\
+	{
+		'video_frame_total': video_frame_total
+	}
 
 
 api = Litestar(
@@ -88,7 +106,14 @@ api = Litestar(
 	read_execution_devices,
 	read_static_execution_devices,
 	stream_state,
-	read_preview
+	read_preview,
+	read_ui_preview_slider,
+	stream_preview,
+	create_static_files_router(
+		path = '/frontend',
+		directories = [ 'facefusion/static' ],
+		html_mode = True,
+    )
 ])
 
 
